@@ -1,0 +1,11 @@
+# dependencias
+node_modules
+
+# build
+dist
+
+# variables de entorno — NUNCA subir al repo
+.env
+.env.local
+.env.production
+.env.development
