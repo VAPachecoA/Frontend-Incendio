@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+const BFF_URL = 'http://localhost:8080/bff/dashboard'
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const nombre = localStorage.getItem('nombre') || 'Admin'
   const [tab, setTab] = useState('reportes')
-  const [reportes, setReportes] = useState([])
-  const [historial, setHistorial] = useState([])
-  const [usuarios, setUsuarios] = useState([])
-  const [estoyBien, setEstoyBien] = useState([])
-  const [loading, setLoading] = useState(false)
+
+  // Un solo estado con los 4 datasets, en vez de 4 useState separados
+  const [datos, setDatos] = useState({ reportes: [], historial: [], usuarios: [], estoyBien: [] })
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   const cerrarSesion = () => {
@@ -17,44 +18,38 @@ export default function Dashboard() {
     navigate('/')
   }
 
-  const cargarDatos = async (tabActual) => {
+  // Una sola llamada al BFF trae los 4 datasets juntos
+  const cargarDashboard = async () => {
     setError('')
     setLoading(true)
-    const endpoints = {
-      reportes: 'http://localhost:8083/apireporte/reportes',
-      historial: 'http://localhost:8082/apihistorico/historial',
-      usuarios: 'http://localhost:8081/apiuser/usuarios',
-      estoyBien: 'http://localhost:8083/apireporte/estoy-bien/todos',
-    }
     try {
-      const res = await fetch(endpoints[tabActual])
-      if (!res.ok) throw new Error('Error al cargar datos')
+      const res = await fetch(BFF_URL)
+      if (!res.ok) throw new Error('Error al cargar el dashboard')
       const data = await res.json()
-      if (tabActual === 'reportes') setReportes(data)
-      else if (tabActual === 'historial') setHistorial(data)
-      else if (tabActual === 'usuarios') setUsuarios(data)
-      else if (tabActual === 'estoyBien') setEstoyBien(data)
+      setDatos(data)
     } catch (e) {
-      setError(e.message + ' — ¿Está corriendo el microservicio?')
+      setError(e.message + ' — ¿Está corriendo el BFF (puerto 8080) y los 3 microservicios?')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    cargarDatos(tab)
-  }, [tab])
+    cargarDashboard()
+  }, [])
+
+  const { reportes, historial, usuarios, estoyBien } = datos
 
   const cambiarEstado = async (id, nuevoEstado) => {
     try {
+      // El cambio de estado sigue yendo directo al microservicio (escritura)
       await fetch(`http://localhost:8083/apireporte/estado/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: nuevoEstado }),
       })
-      const res = await fetch('http://localhost:8083/apireporte/reportes')
-      const data = await res.json()
-      setReportes(data)
+      // Y refrescamos todo el dashboard desde el BFF para mantener todo sincronizado
+      await cargarDashboard()
     } catch {
       setError('Error al cambiar estado.')
     }
@@ -144,29 +139,40 @@ export default function Dashboard() {
         )}
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-slate-300">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-5 py-2.5 text-sm font-semibold rounded-t-md transition-colors ${
-                tab === t.key
-                  ? 'bg-white border border-b-white border-slate-300 text-[#790C0B]'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="flex items-center justify-between mb-6 border-b border-slate-300">
+          <div className="flex gap-2">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`px-5 py-2.5 text-sm font-semibold rounded-t-md transition-colors ${
+                  tab === t.key
+                    ? 'bg-white border border-b-white border-slate-300 text-[#790C0B]'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={cargarDashboard}
+            disabled={loading}
+            className="mb-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {loading ? 'Actualizando...' : '🔄 Actualizar todo'}
+          </button>
         </div>
 
         {/* Content */}
         <div className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+
           {loading && (
-            <div className="py-16 text-center text-slate-400 text-sm">Cargando...</div>
+            <div className="py-16 text-center text-slate-500 text-sm">Cargando dashboard...</div>
           )}
+
           {error && (
-            <div className="m-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <div className="mx-5 mt-4 mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               {error}
             </div>
           )}
